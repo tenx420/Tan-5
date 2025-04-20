@@ -18,11 +18,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Load keys from environment variables or hardcoded (not recommended)
-DISCORD_BOT_TOKEN = "YOUR_DISCORD_BOT_TOKEN_HERE"
-NEWSAPI_KEY = "YOUR_NEWSAPI_KEY_HERE"
-OPENAI_API_KEY = "YOUR_OPENAI_API_KEY_HERE"
-SERPAPI_KEY = "YOUR_SERPAPI_KEY_HERE"
+# Load keys from environment variables
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+SERPAPI_KEY = os.getenv("SERPAPI_KEY")
+
+# Debugging: Print token length (for troubleshooting purposes)
+print("Token length:", len(DISCORD_BOT_TOKEN) if DISCORD_BOT_TOKEN else "No token found")
 
 # Check that all keys are set
 if not DISCORD_BOT_TOKEN:
@@ -79,7 +82,7 @@ def fetch_news_articles(query: str, max_articles: int = 5):
 # ---------------------------------------------------------------------------
 # 3. OpenAI: Generate a News Summary
 # ---------------------------------------------------------------------------
-def generate_news_summary(articles: list, style="witty and concise") -> str:
+def generate_news_summary(articles: list, style="neutral and concise") -> str:
     if not articles:
         return "No articles found for the given topic."
     prompt = "You are a news summarizer. Summarize the following articles in a " \
@@ -125,12 +128,13 @@ async def scrape_command(ctx, url: str):
     soup = BeautifulSoup(response.text, "html.parser")
     title = soup.title.string.strip() if soup.title and soup.title.string else "No title found"
     paragraphs = soup.find_all("p")
-    text_content = "\n".join(p.get_text().strip() for p in paragraphs[:5])
+    # Increase the limit to 10 paragraphs
+    text_content = "\n".join(p.get_text().strip() for p in paragraphs[:10])
     if not text_content:
         text_content = "No textual content could be extracted from the page."
 
     prompt = (
-        "Summarize the following webpage content in a concise, witty manner:\n\n"
+        "Summarize the following webpage content in a neutral and concise manner:\n\n"
         f"Title: {title}\n\nContent:\n{text_content}\n\nSummary:"
     )
 
@@ -216,7 +220,7 @@ async def news_command(ctx, *, topic: str = "latest"):
     await ctx.send(summary)
 
 # ---------------------------------------------------------------------------
-# 8. Respond to Mentions with GPT-based Witty Chat
+# 8. Respond to Mentions with GPT-based Neutral Chat
 # ---------------------------------------------------------------------------
 @bot.event
 async def on_message(message):
@@ -238,24 +242,47 @@ async def on_message(message):
                 messages=[
                     {
                         "role": "system",
-                        "content": (
-                            "You are a witty, sarcastic, and entertaining assistant, but also helpful. "
-                            "Always respond with clever banter and humor, while providing useful info."
-                        )
+                        "content": "You are a helpful and straightforward assistant. Provide clear and concise responses."
                     },
                     {"role": "user", "content": user_input}
                 ],
-                temperature=0.8,
+                temperature=0.7,
                 max_tokens=200
             )
             bot_reply = response.choices[0].message["content"].strip()
             await message.channel.send(bot_reply)
         except Exception as e:
             logger.error(f"OpenAI API error: {e}")
-            await message.channel.send("Oops, something went wrong with GPT!")
+            await message.channel.send("Error processing your request.")
 
     # Ensure other commands (e.g., !news, !stock) are still processed
     await bot.process_commands(message)
+    
+# ── Inserted help_trade here ─────────────────────────────────────────────
+@bot.command(name="help_trade")
+async def help_trade(ctx):
+    help_text = """\
+📘 **Trade Command Reference**
+
+• **Open a new trade**  
+  `!trade open <TICKER> <STRIKE><C/P> <EXPIRY YYYY‑MM‑DD> <ENTRY_PRICE> [QTY]`  
+  – e.g. `!trade open TSLA 200P 2025-05-17 0.45` (QTY defaults to 1)
+
+• **Close a trade**  
+  `!trade close <EXIT_PRICE>`  (closes your latest)  
+  or  
+  `!trade close <ID> <EXIT_PRICE>`  (specific ID)
+
+• **List open trades**  
+  `!trade list`
+
+• **Show the leaderboard**  
+  `!trade leaderboard`
+
+• **Purge a trade (admins only)**  
+  `!trade purge <ID>`
+"""
+    await ctx.send(help_text)
 
 # ---------------------------------------------------------------------------
 # 9. Bot Startup
@@ -264,11 +291,13 @@ async def on_message(message):
 async def on_ready():
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
-def main():
+# ── ONLY lines below changed ──────────────────────────────────────────────
+async def main():
     try:
-        bot.run(DISCORD_BOT_TOKEN)
+        await bot.load_extension("lotto_tracker")   # await because async
+        await bot.start(DISCORD_BOT_TOKEN)          # async version of bot.run()
     except Exception as e:
         logger.error(f"Error running the bot: {e}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
